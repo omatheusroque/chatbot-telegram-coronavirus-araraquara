@@ -1,5 +1,5 @@
-# importação das bibliotecas
 import telebot
+import multiprocessing
 import gspread
 from google.oauth2 import service_account
 import pandas as pd
@@ -12,14 +12,16 @@ import datetime as datetime
 import numpy as np
 import time
 from PIL import Image
+from time import sleep
 
 # atribuição da chave API e configuração do telebot
-with open("/root/Public/share/bot-telegram/texts/chave_api.txt", "r") as arquivo:
+with open("/home/mroque/projetos/bots/bot-covid-telegram/texts/chave_api.txt", "r") as arquivo:
 	chave_api = arquivo.read()
+
 bot = telebot.TeleBot(chave_api)
 
-@bot.message_handler(commands=["resumo"])
-def resumo(mensagem):
+@bot.message_handler(commands=["boletim"])
+def boletim(mensagem):
 
   # INÍCIO CONEXÃO COM O GOOGLE SHEETS
 
@@ -47,7 +49,7 @@ def resumo(mensagem):
   datahora = datetime.datetime.now()
   opcao = mensagem.text
   log = f"""{nome_usuario};{username};{opcao};{datahora.strftime('%d-%m-%Y')};{datahora.strftime('%H:%M:%S')}\n"""
-  with open("/root/Public/share/bot-telegram/logs/logs.csv", "a") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/logs/logs.csv", "a") as arquivo:
     arquivo.write(log)
 
   # mudança da coluna datahora para o formato de data
@@ -65,7 +67,6 @@ def resumo(mensagem):
   casos_6d = df_ara_diario['casos_novos'].iloc[-6]
   casos_7d = df_ara_diario['casos_novos'].iloc[-7]
   casos_8d = df_ara_diario['casos_novos'].iloc[-8]
-  casos_9d = df_ara_diario['casos_novos'].iloc[-9]
 
   # extração dos dados de datas dos últimos 7 dias
   data_1d = df_ara_diario['data'].iloc[-1]
@@ -91,20 +92,23 @@ def resumo(mensagem):
   obitos_total = df_ara_diario['total_obitos'].iloc[-1]
   casos_total = df_ara_diario['total_casos'].iloc[-1]
 
-  # cálculo da taxa de evolução
-  taxa = ((casos_1d) / (casos_2d) -1) * 100
-
   # criação das variáveis de emojis
   emoji_sol = '🌇'
-  emoji_vermelho = '🔴'
-  emoji_verde = '🟢'
-  emoji_morte = '💀'
+  emoji_morte = '⚰️'
   emoji_virus = '🦠'
 
-  # condição para verificar se a taxa é positiva ou negativa
-  # o que muda é o emoji verde e vermelho
-  if taxa > 0:
-    texto_resumo = (f"""
+  # extração média móvel
+  media_movel_1d = df_ara_diario['mm_7d_casos_novos'].iloc[-1]
+  media_movel_2d = df_ara_diario['mm_7d_casos_novos'].iloc[-2]
+
+  if media_movel_1d > media_movel_2d:
+      emoji_mm = "🔺"
+  elif media_movel_1d < media_movel_2d:
+      emoji_mm = "🔻"
+  else:
+      emoji_mm = '⏹️'
+
+  texto_boletim = (f"""
 
 Boletim Informativo {emoji_sol}
 
@@ -112,7 +116,9 @@ Boletim do dia: {data_1d.strftime('%d/%m/%Y')}
 
 Caso(s) novo(s): {'{0:,}'.format(casos_1d).replace(',','.')}
 Óbito(s) novo(s): {'{0:,}'.format(obitos_1d).replace(',','.')} 
-Evolução dos casos: {'{0:,}'.format(round(taxa, 2)).replace('.',',')}% {emoji_vermelho}
+
+Média móvel(7 dias)
+para novos casos: {'{0:,}'.format(media_movel_1d).replace('.', ',')} {emoji_mm}
 
 Total de casos: {'{0:,}'.format(casos_total).replace(',','.')} {emoji_virus}
 Total de óbitos: {'{0:,}'.format(obitos_total).replace(',','.')} {emoji_morte}
@@ -130,35 +136,8 @@ Histórico dos últimos 7 dias:
 * Dados das últimas 24 horas.
 
                 """)
-  else:
-      texto_resumo = (f"""
-
-Boletim Informativo {emoji_sol}
-
-Boletim do dia: {data_1d.strftime('%d/%m/%Y')}
-
-Caso(s) novo(s): {'{0:,}'.format(casos_1d).replace(',','.')}
-Óbito(s) novo(s): {'{0:,}'.format(obitos_1d).replace(',','.')} 
-Evolução dos casos: {'{0:,}'.format(round(taxa, 2)).replace('.',',')}% {emoji_verde}
-
-Total de casos: {'{0:,}'.format(casos_total).replace(',','.')}  {emoji_virus}
-Total de óbitos: {'{0:,}'.format(obitos_total).replace(',','.')}  {emoji_morte}
-
-Histórico dos últimos 7 dias:
-
-{data_2d.strftime('%d/%m')}: {'{0:,}'.format(casos_2d).replace(',','.')} caso(s) e {'{0:,}'.format(obitos_2d).replace(',','.')} óbito(s)
-{data_3d.strftime('%d/%m')}: {'{0:,}'.format(casos_3d).replace(',','.')} caso(s) e {'{0:,}'.format(obitos_3d).replace(',','.')} óbito(s)
-{data_4d.strftime('%d/%m')}: {'{0:,}'.format(casos_4d).replace(',','.')} caso(s) e {'{0:,}'.format(obitos_4d).replace(',','.')} óbito(s)
-{data_5d.strftime('%d/%m')}: {'{0:,}'.format(casos_5d).replace(',','.')} caso(s) e {'{0:,}'.format(obitos_5d).replace(',','.')} óbito(s)
-{data_6d.strftime('%d/%m')}: {'{0:,}'.format(casos_6d).replace(',','.')} caso(s) e {'{0:,}'.format(obitos_6d).replace(',','.')} óbito(s)
-{data_7d.strftime('%d/%m')}: {'{0:,}'.format(casos_7d).replace(',','.')} caso(s) e {'{0:,}'.format(obitos_7d).replace(',','.')} óbito(s)
-{data_8d.strftime('%d/%m')}: {'{0:,}'.format(casos_8d).replace(',','.')} caso(s) e {'{0:,}'.format(obitos_8d).replace(',','.')} óbito(s)
-
-* Dados das últimas 24 horas.
-
-                 """)
       
-  bot.send_message(mensagem.chat.id, texto_resumo)
+  bot.send_message(mensagem.chat.id, texto_boletim)
   emoji_end = '📴'
   emoji_back = '↩️'
   bot.send_message(mensagem.chat.id, f"""
@@ -171,6 +150,7 @@ E agora, o que você deseja fazer?
 @bot.message_handler(commands=["casos"])
 def casos(mensagem):
 
+  bot.send_message(mensagem.chat.id, f"Um instante, gerando o gráfico...")
   # INÍCIO CONEXÃO COM O GOOGLE SHEETS
 
   scopes = ["https://www.googleapis.com/auth/spreadsheets",
@@ -202,7 +182,7 @@ def casos(mensagem):
   datahora = datetime.datetime.now()
   opcao = mensagem.text
   log = f"""{nome_usuario};{username};{opcao};{datahora.strftime('%d-%m-%Y')};{datahora.strftime('%H:%M:%S')}\n"""
-  with open("/root/Public/share/bot-telegram/logs/logs.csv", "a") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/logs/logs.csv", "a") as arquivo:
     arquivo.write(log)
 
   # mudança da coluna datahora para o formato de data
@@ -213,54 +193,31 @@ def casos(mensagem):
 
   # exclusão das colunas __mm_7d_casos_novos e __mm_7d_obitos_novos
   df_ara_diario = df_ara_diario.drop(columns=['__mm_7d_casos_novos','__mm_7d_obitos_novos'])
-  
-  # criação do gráfico diário
-  #x = df_ara_diario['data']
-  #y = df_ara_diario['casos_novos']
-  #z = df_ara_diario['mm_7d_casos_novos']
-
-  #fig, ax = plt.subplots(figsize=(12,5))
-  #ax.bar(x, y, width=1.0, edgecolor="white", linewidth=0.9, color='#069AF3')
-  #ax.plot(x, z, linewidth=2.0, color='0.3')
-
-  #plt.title('Casos de Coronavírus em Araraquara')
-  #plt.xlabel('Dias')
-  #plt.ylabel('Número de Casos')
-
-  #media_movel = mpatches.Patch(color='0.3', label='Média móvel 7 dias')
-  #ax.legend(handles=[media_movel])
-  #fig.autofmt_xdate()
-
-  # exportando e importando a imagem
-  #plt.savefig('/root/Public/share/bot-telegram/imgs/evolucao_diaria_casos_aqa.png', format='png')
-  #img_evolucao_diaria_casos_aqa = Image.open('/root/Public/share/bot-telegram/imgs/evolucao_diaria_casos_aqa.png')
 
   # criação do gráfico mês
-  x1 = df_ara_mensal['mes']
-  y1 = df_ara_mensal['casos']
-  z1 = df_ara_mensal['pico']
+  data = df_ara_diario['data']
+  casos = df_ara_diario['casos_novos']
+  data = data.tail(60)
+  casos = casos.tail(60)
 
-  fig, ax = plt.subplots(figsize=(15,5))
-  ax.bar(x1, y1, width=27, edgecolor="white", linewidth=2.0, color='#069AF3')
-  ax.plot(x1, z1, linewidth=1.5, linestyle='--', color='0.3')
+  fig, ax = plt.subplots(figsize=(12,5))
 
-  plt.title('Casos de Coronavírus em Araraquara')
-  plt.xlabel('Meses')
-  plt.ylabel('Número de Casos')
-  
-  pico = mpatches.Patch(color='0.3', label='junho de 2021')
-  ax.legend(handles=[pico])
+  ax.bar(data,casos, align='center', color='purple')
+  ax.set_xlim()
+  ax.set_title("Covid-19 | Araraquara", fontsize=14, pad=20)
+
+  purple_patch = mpatches.Patch(color='purple', label='Casos por dia')
+  ax.legend(handles=[purple_patch])
+
   fig.autofmt_xdate()
   
   # exportando e importando a imagem
-  plt.savefig('/root/Public/share/bot-telegram/imgs/evolucao_mensal_casos_aqa.png', format='png')
-  img_evolucao_mensal_casos_aqa = Image.open('/root/Public/share/bot-telegram/imgs/evolucao_mensal_casos_aqa.png')
+  plt.savefig('/home/mroque/projetos/bots/bot-covid-telegram/imgs/evolucao_diaria_casos_aqa.png', format='png')
+  evolucao_diaria_casos_aqa = Image.open('/home/mroque/projetos/bots/bot-covid-telegram/imgs/evolucao_diaria_casos_aqa.png')
 
-  bot.send_message(mensagem.chat.id, f"{nome_usuario}, o gráfico é esse aqui:")
-  bot.send_message(mensagem.chat.id, f"Evolução Mensal de Casos:")
-  bot.send_photo(mensagem.chat.id,img_evolucao_mensal_casos_aqa)
-  #bot.send_message(mensagem.chat.id, f"Evolução Diária de Casos:")
-  #bot.send_photo(mensagem.chat.id,img_evolucao_diaria_casos_aqa)
+  bot.send_message(mensagem.chat.id, f"Pronto, segue gráfico com a evolução diária dos casos de COVID-19:")
+  bot.send_photo(mensagem.chat.id,evolucao_diaria_casos_aqa)
+
   emoji_end = '📴'
   emoji_back = '↩️'
   bot.send_message(mensagem.chat.id, f"""
@@ -272,7 +229,8 @@ E agora, o que você deseja fazer?
 
 @bot.message_handler(commands=["obitos"])
 def obitos(mensagem):
-  
+
+  bot.send_message(mensagem.chat.id, f"Um instante, gerando o gráfico...")
   # INÍCIO CONEXÃO COM O GOOGLE SHEETS
 
   scopes = ["https://www.googleapis.com/auth/spreadsheets",
@@ -304,7 +262,7 @@ def obitos(mensagem):
   datahora = datetime.datetime.now()
   opcao = mensagem.text
   log = f"""{nome_usuario};{username};{opcao};{datahora.strftime('%d-%m-%Y')};{datahora.strftime('%H:%M:%S')}\n"""
-  with open("/root/Public/share/bot-telegram/logs/logs.csv", "a") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/logs/logs.csv", "a") as arquivo:
     arquivo.write(log)
 
   # mudança da coluna datahora para o formato de data
@@ -314,23 +272,27 @@ def obitos(mensagem):
   df_ara_diario = df_ara_diario.drop(columns=['__mm_7d_casos_novos','__mm_7d_obitos_novos'])
 
   # criação do gráfico
-  x = df_ara_mensal['mes']
-  y = df_ara_mensal['obitos']
+  mes = df_ara_mensal['mes']
+  obitos = df_ara_mensal['obitos']
+  mes = mes.tail(24)
+  obitos = obitos.tail(24)
 
   fig, ax = plt.subplots(figsize=(12,5))
-  ax.bar(x, y, width=25, edgecolor="white", linewidth=0.7, color='#069AF3')
 
-  plt.title('Óbitos por Coronavírus em Araraquara')
-  plt.xlabel('Meses')
-  plt.ylabel('Número de óbitos')
+  ax.bar(mes, obitos, width=25, linewidth=0.7, align='center', color='gray')
+  ax.set_xlim()
+  ax.set_title("Covid-19 | Araraquara", fontsize=14, pad=20)
+
+  gray_patch = mpatches.Patch(color='gray', label='Óbitos por mês')
+  ax.legend(handles=[gray_patch])
 
   fig.autofmt_xdate()
   
   # exportando e importando a imagem
-  plt.savefig('/root/Public/share/bot-telegram/imgs/img_evolucao_mensal_obitos_aqa.png', format='png')
-  img_evolucao_mensal_obitos_aqa = Image.open('/root/Public/share/bot-telegram/imgs/img_evolucao_mensal_obitos_aqa.png')
+  plt.savefig('/home/mroque/projetos/bots/bot-covid-telegram/imgs/img_evolucao_mensal_obitos_aqa.png', format='png')
+  img_evolucao_mensal_obitos_aqa = Image.open('/home/mroque/projetos/bots/bot-covid-telegram/imgs/img_evolucao_mensal_obitos_aqa.png')
 
-  bot.send_message(mensagem.chat.id, f"{nome_usuario}, o gráfico é esse aqui:")
+  bot.send_message(mensagem.chat.id, f"Pronto, segue gráfico com a evolução mensal dos óbitos de COVID-19:")
   bot.send_photo(mensagem.chat.id,img_evolucao_mensal_obitos_aqa)
   emoji_end = '📴'
   emoji_back = '↩️'
@@ -370,7 +332,7 @@ def leitos(mensagem):
   datahora = datetime.datetime.now()
   opcao = mensagem.text
   log = f"""{nome_usuario};{username};{opcao};{datahora.strftime('%d-%m-%Y')};{datahora.strftime('%H:%M:%S')}\n"""
-  with open("/root/Public/share/bot-telegram/logs/logs.csv", "a") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/logs/logs.csv", "a") as arquivo:
      arquivo.write(log)
 
   # mudança da coluna datahora para o formato de data
@@ -395,7 +357,6 @@ def leitos(mensagem):
   ocupacao_enf_6d = df_ara_diario['ocup_enf'].iloc[-6]
   ocupacao_enf_7d = df_ara_diario['ocup_enf'].iloc[-7]
   ocupacao_enf_8d = df_ara_diario['ocup_enf'].iloc[-8]
-  ocupacao_enf_9d = df_ara_diario['ocup_enf'].iloc[-9]
 
   # extração dos dados de ocupação de UTI dos últimos 8 dias
   ocupacao_uti_1d = df_ara_diario['ocup_uti'].iloc[-1]
@@ -406,7 +367,6 @@ def leitos(mensagem):
   ocupacao_uti_6d = df_ara_diario['ocup_uti'].iloc[-6]
   ocupacao_uti_7d = df_ara_diario['ocup_uti'].iloc[-7]
   ocupacao_uti_8d = df_ara_diario['ocup_uti'].iloc[-8]
-  ocupacao_uti_9d = df_ara_diario['ocup_uti'].iloc[-9]
 
   # criação das variáveis de emojis
   emoji_hospital = '🏥'
@@ -416,6 +376,7 @@ def leitos(mensagem):
 Ocupação de leitos {emoji_hospital}
 
 Dados do dia: {data_1d.strftime('%d/%m/%Y')}
+
 Leitos Enfermaria: {ocupacao_enf_1d}%
 Leitos UTI: {ocupacao_uti_1d}%
 
@@ -471,7 +432,7 @@ def vacina(mensagem):
   datahora = datetime.datetime.now()
   opcao = mensagem.text
   log = f"""{nome_usuario};{username};{opcao};{datahora.strftime('%d-%m-%Y')};{datahora.strftime('%H:%M:%S')}\n"""
-  with open("/root/Public/share/bot-telegram/logs/logs.csv", "a") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/logs/logs.csv", "a") as arquivo:
     arquivo.write(log)
 
     # mudança da coluna datahora para o formato de data
@@ -480,30 +441,22 @@ def vacina(mensagem):
   # extração dos dados de datas dos últimos 7 dias
   data_1d = df_ara_diario['data'].iloc[-1]
 
-  # extração do dado de primeira dose aplicadas
+  # extração do dado das doses aplicadas
   vac_pri_dose = df_ara_diario['vac_pri_dose'].iloc[-1]
-
-  # extração do dado de segunda dose ou dose única aplicadas
   vac_seg_dose = df_ara_diario['vac_seg_dose'].iloc[-1]
-
-  # extração do dado de terceira dose aplicada
   vac_ter_dose = df_ara_diario['vac_ter_dose'].iloc[-1]
-
-  # extração do dado de total de doses aplicadas
-  vac_total = df_ara_diario['vac_total'].iloc[-1]
+  vac_qua_dose = df_ara_diario['vac_qua_dose'].iloc[-1]
 
   # população estimada (IBGE - 2021)
   pop_aqa = 240542
   por_vac_pri_dose = (vac_pri_dose / pop_aqa) * 100
   por_vac_seg_dose = (vac_seg_dose / pop_aqa) * 100
   por_vac_ter_dose = (vac_ter_dose / pop_aqa) * 100
+  por_vac_qua_dose = (vac_qua_dose / pop_aqa) * 100
 
   # criação das variáveis de emojis
   emoji_injecao = '💉'
   emoji_sol = '🌇'
-
-  # condição para verificar se a taxa é positiva ou negativa
-  # o que muda é o emoji verde e vermelho
 
   texto_vacina = (f"""
 Vacinação em Araraquara {emoji_injecao}{emoji_sol}
@@ -520,6 +473,9 @@ Total de doses aplicadas:
 
 • 3ª dose: {'{0:,}'.format(vac_ter_dose).replace(',','.')} doses
 (Corresponde a {'{0:,}'.format(round(por_vac_ter_dose, 2)).replace('.',',')}% da população)
+
+• 4ª dose: {'{0:,}'.format(vac_qua_dose).replace(',','.')} doses
+(Corresponde a {'{0:,}'.format(round(por_vac_qua_dose, 2)).replace('.',',')}% da população)
 
 ¹ Segunda dose ou dose única.
 
@@ -568,7 +524,7 @@ def drs3(mensagem):
   datahora = datetime.datetime.now()
   opcao = mensagem.text
   log = f"""{nome_usuario};{username};{opcao};{datahora.strftime('%d-%m-%Y')};{datahora.strftime('%H:%M:%S')}\n"""
-  with open("/root/Public/share/bot-telegram/logs/logs.csv", "a") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/logs/logs.csv", "a") as arquivo:
     arquivo.write(log)
 
   # mudança da coluna datahora para o formato de data
@@ -614,6 +570,7 @@ E agora, o que você deseja fazer?
 @bot.message_handler(commands=["leitosdrs"])
 def leitosdrs(mensagem):
 
+  bot.send_message(mensagem.chat.id, f"Um instante, gerando o gráfico...")
   # INÍCIO CONEXÃO COM O GOOGLE SHEETS
 
   scopes = ["https://www.googleapis.com/auth/spreadsheets",
@@ -640,7 +597,7 @@ def leitosdrs(mensagem):
   datahora = datetime.datetime.now()
   opcao = mensagem.text
   log = f"""{nome_usuario};{username};{opcao};{datahora.strftime('%d-%m-%Y')};{datahora.strftime('%H:%M:%S')}\n"""
-  with open("/root/Public/share/bot-telegram/logs/logs.csv", "a") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/logs/logs.csv", "a") as arquivo:
     arquivo.write(log)
 
    # Conversão da coluna para o formato da data
@@ -659,29 +616,25 @@ def leitosdrs(mensagem):
 
   dfdrs03['ocupacao_leitos_enf'] = lista_ocupacao_leitos_enf
 
-  # Gráfico leitos
-
   x = dfdrs03['datahora']
   y = dfdrs03['ocupacao_leitos']
   z = dfdrs03['ocupacao_leitos_enf']
 
-  fig, ax = plt.subplots(figsize=(15,5))
-  line1, = ax.plot(x, y, label='Leitos UTI')
-  line2, = ax.plot(x, z, label='Leitos Enfermaria')
+  fig, ax = plt.subplots(figsize=(12,5))
+  line1, = ax.plot(x, y, color = "green", label='Leitos UTI')
+  line2, = ax.plot(x, z, color = "blue", label='Leitos Enfermaria')
 
-  #bar
-  plt.title('Taxa de ocupação (média móvel 7 dias) | DRS 3 Araraquara')
-  plt.xlabel('Últimos 90 dias')
+  ax.set_title("Média móvel - Taxa de Ocupação | DRS 3 Araraquara", fontsize=14, pad=20)
   plt.ylabel('Taxa de Ocupação de Leitos')
 
   ax.legend()
   fig.autofmt_xdate()
   
   # exportando e importando a imagem
-  plt.savefig('/root/Public/share/bot-telegram/imgs/ocupacao_leitos_drs3.png', format='png')
-  img_ocupacao_leitos_drs3 = Image.open('/root/Public/share/bot-telegram/imgs/ocupacao_leitos_drs3.png')
+  plt.savefig('/home/mroque/projetos/bots/bot-covid-telegram/imgs/ocupacao_leitos_drs3.png', format='png')
+  img_ocupacao_leitos_drs3 = Image.open('/home/mroque/projetos/bots/bot-covid-telegram/imgs/ocupacao_leitos_drs3.png')
 
-  bot.send_message(mensagem.chat.id, f"{nome_usuario}, o gráfico é esse aqui:")
+  bot.send_message(mensagem.chat.id, f"Pronto, segue gráfico com a evolução da taxa de ocupação de leitos hospitalares na DRS-3 Araraquara:")
   bot.send_photo(mensagem.chat.id, img_ocupacao_leitos_drs3)
   emoji_end = '📴'
   emoji_back = '↩️'
@@ -696,6 +649,7 @@ E agora, o que você deseja fazer?
 @bot.message_handler(commands=["internacoes"])
 def internacoes(mensagem):
 
+  bot.send_message(mensagem.chat.id, f"Um instante, gerando o gráfico...")
   # INÍCIO CONEXÃO COM O GOOGLE SHEETS
 
   scopes = ["https://www.googleapis.com/auth/spreadsheets",
@@ -722,7 +676,7 @@ def internacoes(mensagem):
   datahora = datetime.datetime.now()
   opcao = mensagem.text
   log = f"""{nome_usuario};{username};{opcao};{datahora.strftime('%d-%m-%Y')};{datahora.strftime('%H:%M:%S')}\n"""
-  with open("/root/Public/share/bot-telegram/logs/logs.csv", "a") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/logs/logs.csv", "a") as arquivo:
     arquivo.write(log)
 
   # Conversão da coluna para o formato da data
@@ -732,23 +686,21 @@ def internacoes(mensagem):
   y = dfdrs03['pacientes_uti_mm7d']
   z = dfdrs03['pacientes_enf_mm7d']
 
-  fig, ax = plt.subplots(figsize=(15,5))
-  line1, = ax.plot(x, y, label='Internações UTI')
-  line2, = ax.plot(x, z, label='Internações Enfermaria')
+  fig, ax = plt.subplots(figsize=(12,5))
+  line1, = ax.plot(x, y, color = "green", label='Internações UTI')
+  line2, = ax.plot(x, z, color = "blue", label='Internações Enfermaria')
 
-  #bar
-  plt.title('Internações (média móvel 7 dias) | DRS 3 Araraquara')
-  plt.xlabel('Últimos 90 dias')
-  plt.ylabel('Número de internações')
+  ax.set_title("Média móvel - Internações | DRS 3 Araraquara", fontsize=14, pad=20)
+  plt.ylabel('Internações')
 
   ax.legend()
   fig.autofmt_xdate()
   
   # exportando e importando a imagem
-  plt.savefig('/root/Public/share/bot-telegram/imgs/internacoes_drs3.png', format='png')
-  img_internacoes_drs3 = Image.open('/root/Public/share/bot-telegram/imgs/internacoes_drs3.png')
+  plt.savefig('/home/mroque/projetos/bots/bot-covid-telegram/imgs/internacoes_drs3.png', format='png')
+  img_internacoes_drs3 = Image.open('/home/mroque/projetos/bots/bot-covid-telegram/imgs/internacoes_drs3.png')
 
-  bot.send_message(mensagem.chat.id, f"{nome_usuario}, o gráfico é esse aqui:")
+  bot.send_message(mensagem.chat.id, f"Pronto, segue gráfico com a evolução das internações hospitalares por COVID-19 na DRS-3 Araraquara:")
   bot.send_photo(mensagem.chat.id, img_internacoes_drs3)
   emoji_end = '📴'
   emoji_back = '↩️'
@@ -768,7 +720,7 @@ def ajuda(mensagem):
   datahora = datetime.datetime.now()
   opcao = mensagem.text
   log = f"""{nome_usuario};{username};{opcao};{datahora.strftime('%d-%m-%Y')};{datahora.strftime('%H:%M:%S')}\n"""
-  with open("/root/Public/share/bot-telegram/logs/logs.csv", "a") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/logs/logs.csv", "a") as arquivo:
     arquivo.write(log)
 
   # criação da variável para receber o emoji
@@ -800,11 +752,11 @@ def info(mensagem):
   datahora = datetime.datetime.now()
   opcao = mensagem.text
   log = f"""{nome_usuario};{username};{opcao};{datahora.strftime('%d-%m-%Y')};{datahora.strftime('%H:%M:%S')}\n"""
-  with open("/root/Public/share/bot-telegram/logs/logs.csv", "a") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/logs/logs.csv", "a") as arquivo:
     arquivo.write(log)
 
   # importação do arquivo com as informações
-  with open("/root/Public/share/bot-telegram/texts/info.txt", "r") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/texts/info.txt", "r") as arquivo:
     info = arquivo.read()
 
   # impressão do texto
@@ -831,11 +783,11 @@ def fonte(mensagem):
   datahora = datetime.datetime.now()
   opcao = mensagem.text
   log = f"""{nome_usuario};{username};{opcao};{datahora.strftime('%d-%m-%Y')};{datahora.strftime('%H:%M:%S')}\n"""
-  with open("/root/Public/share/bot-telegram/logs/logs.csv", "a") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/logs/logs.csv", "a") as arquivo:
     arquivo.write(log)
 
   # importação do arquivo com as fontes utilizadas
-  with open("/root/Public/share/bot-telegram/texts/fontes.txt", "r") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/texts/fontes.txt", "r") as arquivo:
     fontes = arquivo.read()
 
   fontes = (f"""
@@ -861,7 +813,7 @@ def menu(mensagem):
   datahora = datetime.datetime.now()
   opcao = mensagem.text
   log = f"""{nome_usuario};{username};{opcao};{datahora.strftime('%d-%m-%Y')};{datahora.strftime('%H:%M:%S')}\n"""
-  with open("/root/Public/share/bot-telegram/logs/logs.csv", "a") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/logs/logs.csv", "a") as arquivo:
     arquivo.write(log)
 
   # criação das variáveis dos emojis
@@ -871,15 +823,13 @@ def menu(mensagem):
   emoji_grafico = '📊'
   emoji_hospital = '🏥'
   emoji_injecao = '💉'
-  emoji_brasil = '🇧🇷'
   emoji_ajuda = '❓'
   emoji_fonte = '📂'
   emoji_notificacao = '🔔'
   emoji_end = '📴'
-  emoji_back = '↩️'
 
   # importação do arquivo com as notificações do menu
-  with open("/root/Public/share/bot-telegram/texts/notificacoes_menu.txt", "r") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/texts/notificacoes_menu.txt", "r") as arquivo:
      notificacoes_menu = arquivo.read()
 
   # texto com o menu principal
@@ -890,16 +840,16 @@ Clique em uma das opções abaixo:
 
 Informações de Araraquara {emoji_seta_baixo}
 
-• /resumo - {emoji_jornal} Boletim do dia 
+• /boletim - {emoji_jornal} Boletim do dia 
 • /casos - {emoji_grafico} Evolução de casos
 • /obitos - {emoji_grafico} Evolução de óbitos
-• /leitos -  {emoji_hospital} Ocupação de Leitos
+• /leitos -  {emoji_hospital} Ocupação de leitos
 • /vacina - {emoji_injecao} Vacinação  
 
 Informações DRS 3 - Araraquara {emoji_seta_baixo}
 
 • /drs3 - {emoji_jornal} Boletim do dia
-• /leitosdrs - {emoji_hospital} Ocupação de Leitos
+• /leitosdrs - {emoji_hospital} Ocupação de leitos
 • /internacoes - {emoji_grafico} Internações
 
 Precisa de algo mais? {emoji_seta_baixo}
@@ -927,14 +877,14 @@ def encerrar(mensagem):
   datahora = datetime.datetime.now()
   opcao = mensagem.text
   log = f"""{nome_usuario};{username};{opcao};{datahora.strftime('%d-%m-%Y')};{datahora.strftime('%H:%M:%S')}\n"""
-  with open("/root/Public/share/bot-telegram/logs/logs.csv", "a") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/logs/logs.csv", "a") as arquivo:
     arquivo.write(log)
 
   # variável para o remoji
   emoji_robo = '🤖'
 
   # mensagem para o usuário
-  bot.send_message(mensagem.chat.id, f'Obrigado, até mais! {emoji_robo}')
+  bot.send_message(mensagem.chat.id, f'Obrigado, {nome_usuario}! Até mais! {emoji_robo}')
 
 # validar qualquer mensagem enviada que não seja comando
 def validar(mensagem):
@@ -950,14 +900,12 @@ def resposta_padrao(mensagem):
   datahora = datetime.datetime.now()
   opcao = mensagem.text
   log = f"""{nome_usuario};{username};{opcao};{datahora.strftime('%d-%m-%Y')};{datahora.strftime('%H:%M:%S')}\n"""
-  with open("/root/Public/share/bot-telegram/logs/logs.csv", "a") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/logs/logs.csv", "a") as arquivo:
     arquivo.write(log)
 
   # criação das variáveis para os emojis
   emoji_feliz = '😀'
   emoji_robo = '🤖'
-  emoji_virus = '🦠'
-  emoji_mascara = '😷'
   emoji_robo = '🤖'
   emoji_seta_baixo = '⬇️'
   emoji_jornal = '📰'
@@ -969,18 +917,15 @@ def resposta_padrao(mensagem):
   emoji_fonte = '📂'
   emoji_notificacao = '🔔'
   emoji_end = '📴'
-  emoji_back = '↩️'
 
   # texto de saudação
   texto_saudacao = (f"""
 Olá, {nome_usuario}! {emoji_feliz}
-Eu sou o Eddie {emoji_robo} e vou te manter
-informado sobre a situação do
-Coronavírus em Araraquara. {emoji_mascara}{emoji_virus}
+Seja bem-vindo(a)!
                 """)
   
   # Importar o arquivo txt das notificações do menu
-  with open("/root/Public/share/bot-telegram/texts/notificacoes_menu.txt", "r") as arquivo:
+  with open("/home/mroque/projetos/bots/bot-covid-telegram/texts/notificacoes_menu.txt", "r") as arquivo:
    notificacoes_menu = arquivo.read()
 
   # texto com o menu principal
@@ -991,16 +936,16 @@ Clique em uma das opções abaixo:
 
 Informações de Araraquara {emoji_seta_baixo}
 
-• /resumo - {emoji_jornal} Boletim do dia 
+• /boletim - {emoji_jornal} Boletim do dia 
 • /casos - {emoji_grafico} Evolução de casos
 • /obitos - {emoji_grafico} Evolução de óbitos
-• /leitos -  {emoji_hospital} Ocupação de Leitos
+• /leitos -  {emoji_hospital} Ocupação de leitos
 • /vacina - {emoji_injecao} Vacinação  
 
 Informações DRS 3 - Araraquara {emoji_seta_baixo}
 
 • /drs3 - {emoji_jornal} Boletim do dia
-• /leitosdrs - {emoji_hospital} Ocupação de Leitos
+• /leitosdrs - {emoji_hospital} Ocupação de leitos
 • /internacoes - {emoji_grafico} Internações
 
 Precisa de algo mais? {emoji_seta_baixo}
@@ -1021,6 +966,14 @@ Precisa de algo mais? {emoji_seta_baixo}
   bot.send_message(mensagem.chat.id, menu)
 
 # manter o chatbot ativo
-bot.polling(none_stop=True)
+#bot.polling(none_stop=True)
+#bot.infinity_polling(True)
 
-#v1.2.2
+while True:
+  try:
+    bot.polling(none_stop=True)
+  except:
+    time.sleep(5)
+
+#v2.0.0
+#23-07-2022
