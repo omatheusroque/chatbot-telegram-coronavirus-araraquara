@@ -5,7 +5,6 @@ análise e ciência de dados em um case prático sobre a situação epidemiológ
 na cidade de Araraquara e também na DRS (Departamento Regional de Saúde).
 
 - Para conhecer na prática, acesse https://t.me/covidararaquara_bot.
-- Conheça também o dashboard, desenvolvido no Google Data Studio, acesse https://bit.ly/coronavirusararaquara.
 
 *Dicas, sugestões e críticas construtivas são sempre bem-vindas, o intuito é absorver cada vez 
 mais conhecimento e me desenvolver na área.*
